@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.2.1
+
+Start with `human-summary.html` for the concise assessment. Existing detailed
+reports and machine artifacts remain available. Scoring, gates, and configuration
+remain compatible with v0.2.0; the new summary output paths are additive.
+
+- Add bounded human-summary HTML/Markdown with three grouped priorities and a plain-language deployment status; use it in GitHub summaries and PR comments.
+- Start detailed reports with the concise summary; show at most three review source examples and retain complete evidence in JSON.
+- Explain rejected evidence links with specific reasons. Scoring and gate behavior are unchanged.
+
 ## 0.2.0
 
 Compatibility: the default scoring profile changes to arc42 (scoring 2.0).
