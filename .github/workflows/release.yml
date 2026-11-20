@@ -1,0 +1,62 @@
+name: Prepare Marketplace release
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Stable version matching pyproject.toml, such as v0.1.0
+        required: true
+        type: string
+permissions:
+  contents: read
+concurrency:
+  group: marketplace-release
+  cancel-in-progress: false
+jobs:
+  validate:
+    if: github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
+    uses: ./.github/workflows/ci.yml
+  release:
+    needs: validate
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    env:
+      VERSION: ${{ inputs.version }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          fetch-depth: 0
+      - name: Validate version and prepare traceable release notes
+        run: |
+          python - <<'PY'
+          import json, os, re, tomllib
+          from pathlib import Path
+          version = os.environ['VERSION']
+          assert re.fullmatch(r'v[0-9]+\.[0-9]+\.[0-9]+', version), 'Invalid version'
+          package = tomllib.loads(Path('pyproject.toml').read_text())
+          assert version == 'v' + package['project']['version'], 'Package version mismatch'
+          source = json.loads(Path('UPSTREAM.json').read_text())
+          body = (
+              f"arc42 TQI {version}\n\n"
+              f"Source: {source['repository']}/commit/{source['commit']}\n\n"
+              f"Distribution commit: {os.environ['GITHUB_SHA']}\n\n"
+              "Offline architecture-documentation assessment for Linux GitHub runners. "
+              "The Action builds its bundled Dockerfile and needs no GHCR credentials.\n\n"
+              "Validation: source provenance, tests, lint, types, wheel, dependency audit, "
+              "real Action outputs, and AMD64/ARM64 container smoke tests.\n\n"
+              "Before publishing, add scoring/compatibility changes and select Publish this "
+              "Action to the GitHub Marketplace in the release editor.\n"
+          )
+          Path(os.environ['RUNNER_TEMP'], 'release-notes.md').write_text(body)
+          PY
+          if git rev-parse --verify "refs/tags/$VERSION"; then
+            echo 'Tag already exists; refusing to overwrite it.'
+            exit 1
+          fi
+      - name: Tag validated source and create a draft release
+        run: |
+          git tag "$VERSION" "$GITHUB_SHA"
+          git push origin "refs/tags/$VERSION"
+          gh release create "$VERSION" --verify-tag --draft --title "arc42 TQI $VERSION" \
+            --notes-file "$RUNNER_TEMP/release-notes.md"
