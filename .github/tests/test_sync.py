@@ -30,6 +30,10 @@ class SyncTests(unittest.TestCase):
         self.script = self.destination / ".github/scripts/sync_upstream.py"
         self.script.parent.mkdir(parents=True)
         shutil.copyfile(SCRIPT, self.script)
+        self.templates = self.source / "distribution/arc42-tqi"
+        (self.templates / ".github/scripts").mkdir(parents=True)
+        shutil.copyfile(SCRIPT, self.templates / ".github/scripts/sync_upstream.py")
+        (self.templates / "DISTRIBUTION.md").write_text("retain me")
         self.revision = self.commit()
 
     def git(self, repository: Path, *args: str) -> str:
@@ -93,6 +97,19 @@ class SyncTests(unittest.TestCase):
         self.assertIn("Marketplace distribution", readme)
         (self.subtree / "UPSTREAM.json").write_text("{}")
         self.assertNotEqual(self.sync("--ref", self.commit()).returncode, 0)
+
+    def test_workflow_tampering_and_template_deletion(self) -> None:
+        workflow = self.templates / ".github/workflows/ci.yml"
+        workflow.parent.mkdir(parents=True)
+        workflow.write_text("name: canonical")
+        revision = self.commit()
+        self.assertEqual(self.sync("--ref", revision).returncode, 0)
+        target = self.destination / ".github/workflows/ci.yml"
+        target.write_text("name: tampered")
+        self.assertNotEqual(self.sync("--check").returncode, 0)
+        workflow.unlink()
+        self.assertEqual(self.sync("--ref", self.commit()).returncode, 0)
+        self.assertFalse(target.exists())
 
     def test_reject_additional_tracked_code(self) -> None:
         self.assertEqual(self.sync("--ref", self.revision).returncode, 0)

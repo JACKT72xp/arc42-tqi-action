@@ -11,6 +11,7 @@ from pathlib import Path, PurePosixPath
 UPSTREAM = "https://github.com/JACKT72xp/architecture-actions-public"
 PREFIX = "actions/arc42-tqi/"
 TARGET = "JACKT72xp/arc42-tqi-action"
+TEMPLATE_PREFIX = "distribution/arc42-tqi/"
 DESTINATION = Path(__file__).resolve().parents[2]
 
 
@@ -71,14 +72,14 @@ def exported(source: Path, revision: str) -> dict[str, bytes]:
                 "Change `actions/arc42-tqi/` there. Maintainers review, merge and test changes\n"
                 "upstream before synchronizing this repository. Direct analyzer changes here\n"
                 "will fail the source verification check and can be overwritten by synchronization.\n\n"
-                "Distribution workflow changes can be reviewed here. See [DISTRIBUTION.md](DISTRIBUTION.md).\n\n"
+                "Distribution workflow changes also belong upstream, under `distribution/arc42-tqi/`.\n\n"
                 f"[Upstream contribution guide]({UPSTREAM}/blob/main/actions/arc42-tqi/CONTRIBUTING.md).\n"
             ).encode()
         elif relative == "docs/releasing.md":
             content = (
                 "# Releasing this distribution\n\n"
                 "Follow [the distribution release guide](../DISTRIBUTION.md).\n"
-                "The upstream monorepo's GHCR release workflow is separate and is not used here.\n"
+                "All release changes are reviewed upstream before synchronizing this distribution.\n"
             ).encode()
         elif relative in {"docs/phase-2.md", "docs/phase-3.md", "docs/architecture.md"}:
             content = (
@@ -91,12 +92,27 @@ def exported(source: Path, revision: str) -> dict[str, bytes]:
         result[relative] = content
     if not {"action.yml", "Dockerfile", "LICENSE", "src/arc42_tqi/cli.py"} <= result.keys():
         raise ValueError("The selected revision does not contain a complete Action")
+    templates = git(source, "ls-tree", "-rz", revision, "--", TEMPLATE_PREFIX)
+    if not templates:
+        raise ValueError("Source revision has no canonical distribution configuration")
+    for entry in templates.split(b"\0"):
+        if not entry:
+            continue
+        metadata, raw_path = entry.split(b"\t", 1)
+        mode, kind, object_id = metadata.decode().split()
+        relative = raw_path.decode().removeprefix(TEMPLATE_PREFIX)
+        target_path(relative)
+        if mode not in {"100644", "100755"} or kind != "blob":
+            raise ValueError(f"Unsupported template entry: {relative}")
+        if relative in result or relative == "UPSTREAM.json":
+            raise ValueError(f"Template collides with analyzer file: {relative}")
+        result[relative] = git(source, "cat-file", "blob", object_id)
     return result
 
 
 def target_path(relative: str) -> Path:
     path = PurePosixPath(relative)
-    if path.is_absolute() or ".." in path.parts or path.parts[0] in {".git", ".github"}:
+    if path.is_absolute() or ".." in path.parts or ".git" in path.parts:
         raise ValueError("Unsafe managed path")
     target = DESTINATION / path
     if target.resolve() != target.absolute():
@@ -105,11 +121,17 @@ def target_path(relative: str) -> Path:
 
 
 def main() -> None:
+    global DESTINATION
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--source", required=True, type=Path)
     parser.add_argument("--ref", help="Full upstream commit SHA; defaults to recorded provenance")
     parser.add_argument("--check", action="store_true")
+    parser.add_argument("--destination", type=Path, default=DESTINATION)
     args = parser.parse_args()
+    DESTINATION = args.destination.resolve()
+    if DESTINATION == args.source.resolve():
+        parser.error("Destination must be separate from source")
+    DESTINATION.mkdir(parents=True, exist_ok=True)
     manifest_path = DESTINATION / "UPSTREAM.json"
     previous = json.loads(manifest_path.read_text()) if manifest_path.exists() else {}
     revision = args.ref or previous.get("commit", "")
@@ -121,7 +143,7 @@ def main() -> None:
     files = exported(args.source, revision)
     manifest = {
         "repository": UPSTREAM, "commit": revision, "subdirectory": PREFIX.rstrip("/"),
-        "export_format": 1,
+        "export_format": 2, "distribution_subdirectory": TEMPLATE_PREFIX.rstrip("/"),
         "files": {name: hashlib.sha256(content).hexdigest() for name, content in sorted(files.items())},
     }
     serialized = (json.dumps(manifest, indent=2, sort_keys=True) + "\n").encode()
@@ -129,10 +151,10 @@ def main() -> None:
         mismatches = [name for name, content in files.items()
                       if not target_path(name).is_file() or target_path(name).read_bytes() != content]
         # Reject tracked additions to the distributed code as well as modifications/deletions.
-        tracked = git(DESTINATION, "ls-files", "-z").decode().split("\0")
-        owned = {"UPSTREAM.json", "DISTRIBUTION.md", ".gitignore"}
-        mismatches.extend(name for name in tracked if name and name not in files
-                          and name not in owned and not name.startswith(".github/"))
+        if (DESTINATION / ".git").exists():
+            tracked = git(DESTINATION, "ls-files", "-z").decode().split("\0")
+            mismatches.extend(name for name in tracked if name and name not in files and name != "UPSTREAM.json"
+                              and target_path(name).exists())
         if not manifest_path.exists() or manifest_path.read_bytes() != serialized:
             mismatches.append("UPSTREAM.json")
         if mismatches:

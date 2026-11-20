@@ -21,16 +21,28 @@ jobs:
       pull-requests: write
     env:
       SOURCE_SHA: ${{ inputs.source_sha }}
-      GH_TOKEN: ${{ github.token }}
+      GH_TOKEN: ${{ secrets.DISTRIBUTION_SYNC_TOKEN || github.token }}
     steps:
-      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          token: ${{ secrets.DISTRIBUTION_SYNC_TOKEN || github.token }}
       - name: Export selected upstream commit
         run: |
           [[ "$SOURCE_SHA" =~ ^[0-9a-f]{40}$ ]] || exit 1
           git clone --no-checkout https://github.com/JACKT72xp/architecture-actions-public.git "$RUNNER_TEMP/upstream"
           git -C "$RUNNER_TEMP/upstream" merge-base --is-ancestor "$SOURCE_SHA" origin/main
-          python .github/scripts/sync_upstream.py --source "$RUNNER_TEMP/upstream" --ref "$SOURCE_SHA"
+          git -C "$RUNNER_TEMP/upstream" show "$SOURCE_SHA:distribution/arc42-tqi/.github/scripts/sync_upstream.py" > "$RUNNER_TEMP/export.py"
+          python "$RUNNER_TEMP/export.py" --source "$RUNNER_TEMP/upstream" --ref "$SOURCE_SHA" --destination "$GITHUB_WORKSPACE"
           python .github/scripts/sync_upstream.py --source "$RUNNER_TEMP/upstream" --check
+      - name: Check workflow-update credentials
+        env:
+          HAS_SYNC_TOKEN: ${{ secrets.DISTRIBUTION_SYNC_TOKEN != '' }}
+        run: |
+          if test "$HAS_SYNC_TOKEN" != true && test -n "$(git status --porcelain -- .github/workflows)"; then
+            echo 'Workflow updates require DISTRIBUTION_SYNC_TOKEN with Workflows write permission.'
+            echo 'Alternatively, export locally and push a sync branch using your maintainer credentials. See DISTRIBUTION.md.'
+            exit 1
+          fi
       - name: Open synchronization pull request
         run: |
           if test -z "$(git status --porcelain)"; then

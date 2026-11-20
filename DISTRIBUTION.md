@@ -1,88 +1,113 @@
 # Marketplace distribution
 
-This repository distributes `actions/arc42-tqi/` from
-[JACKT72xp/architecture-actions-public](https://github.com/JACKT72xp/architecture-actions-public).
-It is an independent Git repository with a one-way subtree export, not a GitHub
-fork relationship. The upstream monorepo remains the source of truth for analyzer
-code, tests, dependencies, and product documentation.
+All code, documentation, workflow, and release-policy changes start as pull
+requests to [architecture-actions-public](https://github.com/JACKT72xp/architecture-actions-public).
+This repository is generated. Do not make independent changes here.
 
-## Ownership and contributions
+## Canonical structure
 
-Send analyzer issues and pull requests to the upstream repository. The README,
-contribution guide, example workflow, release guide, and historical design documents receive deterministic
-changes during export to describe this distribution correctly. Historical design
-snapshots and the monorepo's GHCR release script are excluded. Other exported
-files are identical to their upstream blobs.
-
-`UPSTREAM.json` records the upstream commit and SHA-256 hashes of exported files.
-CI rebuilds the expected export from that commit and compares the actual bytes;
-editing the manifest alone cannot hide a change. Changes to `.github/`,
-`DISTRIBUTION.md`, and `.gitignore` belong to this repository and are reviewed here.
-
-## Initial setup
-
-1. Push the recorded source commit to upstream `main` before pushing this
-   repository. CI fetches the public source repository and needs that commit.
-2. Push this repository's initial commit to `main` and confirm all CI jobs pass.
-3. In Settings > Actions > General, enable **Allow GitHub Actions to create and
-   approve pull requests** for the sync workflow. It creates PRs; it does not
-   approve or merge them. No cross-repository write token is required: source
-   reads are public and destination writes use this repository's `GITHUB_TOKEN`.
-4. Enable private vulnerability reporting and branch protection/rulesets for
-   `main`; require review and validation. Restrict release-tag updates to maintainers.
-5. Confirm that the Action name is available in Marketplace and that the owner
-   has accepted the GitHub Marketplace Developer Agreement.
-
-## Synchronization
-
-After reviewing, merging and validating changes upstream, run **Sync reviewed
-upstream source** from this repository's default branch with the full upstream
-commit SHA. The workflow checks that the commit belongs to upstream `main`,
-exports the subtree, opens a PR, and dispatches **Validate distribution** on its
-branch. Review the diff and successful workflow before merging. Workflow-token
-PRs do not automatically trigger normal push/PR checks, so explicit dispatch is
-intentional. If PR creation is disabled, enable it and open the PR from the
-already-pushed `sync/upstream-<SHA>` branch, then dispatch validation on that branch.
-If a sync branch already exists, review/reuse that PR; the workflow never force-pushes.
-
-For a local sync with a sibling source checkout:
-
-```sh
-python3 .github/scripts/sync_upstream.py \
-  --source ../architecture-actions-public --ref FULL_UPSTREAM_COMMIT_SHA
-python3 .github/scripts/sync_upstream.py \
-  --source ../architecture-actions-public --check
+```text
+architecture-actions-public/
+├── actions/arc42-tqi/          # Analyzer, tests, pyproject.toml, CHANGELOG.md
+└── distribution/arc42-tqi/     # Exporter, workflows, contribution routing, this guide
+             │ reviewed commit exported into
+             ▼
+arc42-tqi-action/              # Public Marketplace repository
+├── action.yml
+├── Dockerfile
+├── src/
+├── .github/workflows/
+└── UPSTREAM.json
 ```
 
-Only committed upstream content is exported. Local uncommitted source changes are
-not included. Sync also removes previously exported files deleted upstream.
-Commit and review the resulting distribution changes before releasing.
+The export combines both directories. README/example links are adapted for the
+root Action and historical packaging documents are labelled. `UPSTREAM.json`
+records the source commit and hashes of every generated file, including workflows.
+CI independently regenerates the expected export from that source commit and
+rejects differences or additional tracked files. This is a one-way export, not a
+native GitHub fork relationship. The distribution requires no upstream checkout
+when consumers run the Action.
 
-## Releases
+## Contributions and versions
 
-The source `action.yml` builds the root Dockerfile. This works for consumers in
-other accounts without a registry login or a prepublished container. Builds need
-network access to the pinned base image and package repositories; analysis itself
-is offline by default. Docker Actions require Linux runners.
+1. Open a PR in the main repository. Analyzer changes go in `actions/arc42-tqi/`;
+   distribution infrastructure changes go in `distribution/arc42-tqi/`.
+2. Pass required CI and resolve review conversations before merging. Main requires
+   PRs and passing checks, including for administrators. With one maintainer, the
+   required approval count is zero; add required independent approvals when another
+   maintainer is available. Contributors cannot merge without repository permissions.
+3. Prepare a release PR changing `actions/arc42-tqi/pyproject.toml` and its
+   `CHANGELOG.md`. The package metadata supplies the CLI and integration version;
+   do not maintain separate version literals. Use patch versions for compatible
+   fixes, minor versions for features, and major versions for incompatible stable
+   interfaces. During 0.x, document any incompatible minor-release changes.
+4. Review schema and scoring compatibility separately. Record score changes and
+   update `schema_version`/`scoring_version` when their contracts change; those
+   versions are not the package version.
+5. After the release PR merges and upstream CI passes, synchronize that full
+   commit SHA into this repository. The sync PR is generated distribution output,
+   not a second place to propose product changes.
 
-1. Set the desired package version upstream, review/merge it, then synchronize.
-2. Run **Prepare Marketplace release** on the distribution's default branch with
-   a matching version such as `v0.1.0`.
-3. The workflow verifies provenance, unit/integration tests, lint, types, wheel
-   build, dependency advisories, real Action outputs, and native Linux AMD64/ARM64
-   container smoke tests. It then creates a new immutable-by-process tag and a
-   **draft** release. Existing tags are never overwritten by this workflow.
-4. Review the release notes and add scoring/compatibility changes. In GitHub's
-   release editor, select **Publish this Action to the GitHub Marketplace**,
-   choose a category, accept the agreement if prompted, and publish the release.
-5. Verify the listing and test its usage example from another repository.
+## Synchronize
 
-The workflow does not accept agreements or publish the Marketplace listing.
-Do not advertise `v0.1.0` until the release has actually been published. Prefer
-full distribution commit SHAs in security-sensitive consumer workflows:
+Run **Sync reviewed upstream source** on the distribution's default branch with
+a full source SHA. It verifies membership in upstream `main`, uses that commit's
+canonical exporter, opens a sync PR, and dispatches distribution CI on its branch.
+Review the generated diff and passing CI before merging. Nothing auto-merges.
+
+Normal code-only syncs use `GITHUB_TOKEN`. Enable Actions PR creation in this
+repository's Actions settings. Since workflow-token PRs do not automatically
+trigger push/PR CI, the workflow explicitly dispatches validation.
+
+If the export changes `.github/workflows/`, use a fine-grained token stored as
+`DISTRIBUTION_SYNC_TOKEN`, scoped only to this distribution repository with Contents,
+Pull requests, Actions and Workflows write permissions, or synchronize locally
+using your existing maintainer credentials. No new token is needed for local
+synchronization. Keep the token out of source control. The workflow fails with
+instructions when workflow updates need credentials; it never silently omits them.
+
+Local synchronization (run from the main repository after pulling its latest main):
+
+```sh
+SOURCE_SHA=$(git rev-parse HEAD)
+git merge-base --is-ancestor "$SOURCE_SHA" origin/main
+python3 distribution/arc42-tqi/.github/scripts/sync_upstream.py \
+  --source . --ref "$SOURCE_SHA" --destination ../arc42-tqi-action
+python3 distribution/arc42-tqi/.github/scripts/sync_upstream.py \
+  --source . --ref "$SOURCE_SHA" --destination ../arc42-tqi-action --check
+```
+
+Then create a sync branch in the distribution repository, commit the export,
+push that branch and open a PR. Never force-push or rewrite an existing release
+version. Previously exported files removed upstream are removed during sync.
+
+## First publication and subsequent releases
+
+1. Merge the setup PR upstream and ensure its source commit is publicly available.
+2. Export that merged commit into the distribution repository and push the initial
+   main branch. Subsequent exports use PRs. Configure branch protection with required
+   distribution validation, prevent force pushes/deletion, and enable private
+   vulnerability reporting in both repositories.
+3. Run **Prepare Marketplace release** on distribution main with a version matching
+   `pyproject.toml` and a nonempty, unique `CHANGELOG.md` entry, for example `v0.1.0`.
+4. The release workflow gates tagging on provenance, tests, lint, types, wheel build,
+   dependency audit, real Action outputs and Linux AMD64/ARM64 smoke tests. It creates
+   a new tag and a draft release with reviewed changelog text and source provenance.
+5. Review the draft. Accept GitHub's Marketplace Developer Agreement, check the
+   unique Action name, select **Publish this Action to the GitHub Marketplace**,
+   choose a category, then publish. These UI/legal steps remain with the owner.
+6. Verify the listing and run the documented Action from another repository.
+
+The old monorepo GHCR publication workflow is retired. Marketplace releases live
+only here. No automatic moving `v0`/`v1` tags are created. Version tags are never
+reused; rollback means selecting a previous SHA or publishing a new fixed version.
+
+This Docker Action builds its root Dockerfile on a Linux runner. Builds need
+network access to base-image/package repositories; normal analysis is offline.
+Consumers need no GHCR login, LLM credentials, or source-monorepo checkout:
 
 ```yaml
-- uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+- uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
 - uses: JACKT72xp/arc42-tqi-action@FULL_DISTRIBUTION_COMMIT_SHA
   with:
     docs-path: docs

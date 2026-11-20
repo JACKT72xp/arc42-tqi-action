@@ -24,21 +24,21 @@ jobs:
       VERSION: ${{ inputs.version }}
       GH_TOKEN: ${{ github.token }}
     steps:
-      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
         with:
           fetch-depth: 0
       - name: Validate version and prepare traceable release notes
         run: |
           python - <<'PY'
-          import json, os, re, tomllib
+          import json, os, sys
           from pathlib import Path
+          sys.path.insert(0, 'scripts')
+          from release_metadata import release_notes
           version = os.environ['VERSION']
-          assert re.fullmatch(r'v[0-9]+\.[0-9]+\.[0-9]+', version), 'Invalid version'
-          package = tomllib.loads(Path('pyproject.toml').read_text())
-          assert version == 'v' + package['project']['version'], 'Package version mismatch'
+          reviewed_notes = release_notes(Path('.'), version)
           source = json.loads(Path('UPSTREAM.json').read_text())
           body = (
-              f"arc42 TQI {version}\n\n"
+              f"arc42 TQI {version}\n\n{reviewed_notes}\n"
               f"Source: {source['repository']}/commit/{source['commit']}\n\n"
               f"Distribution commit: {os.environ['GITHUB_SHA']}\n\n"
               "Offline architecture-documentation assessment for Linux GitHub runners. "
