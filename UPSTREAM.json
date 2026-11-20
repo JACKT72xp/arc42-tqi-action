@@ -1,5 +1,5 @@
 {
-  "commit": "a2c775e676a822d2fe23be5e38474207dca745e4",
+  "commit": "8159c0fd312b5fe9db02f31580df7b3fb3b4c90a",
   "distribution_subdirectory": "distribution/arc42-tqi",
   "export_format": 2,
   "files": {
@@ -38,7 +38,7 @@
     "schemas/config.schema.json": "ec291435e9e83dc97b6115896e28d12db8395a4e98ba8ac6ee67edbcd39aa69a",
     "schemas/tqi-report.schema.json": "aa871381a710d8dc14e7c5375d37c427042dc2808db0fd9bdc7e752385903baa",
     "scripts/release_metadata.py": "8e3bf3e814eb089b3b31d10d40e8027a58cc8db90b7d67f8c5aa53d8605ddbfa",
-    "scripts/smoke_image.py": "18473283bb81d44ef530b2ff4051a2cdfeb62d80a7e7945fd1387a24510a1792",
+    "scripts/smoke_image.py": "5f4c7c9ca247939bdf5351c2cc11e60e422a38a088be2eca45ba820b9727bc84",
     "src/arc42_tqi/__init__.py": "d0710a92bcdd6c649343ab00ac11195eb231a98f523a9412bfc0bd0c49524bbf",
     "src/arc42_tqi/adrs.py": "26e6ef25ea03a15162a799bf8227a07ed0df04ed8136140be4ab64ffc5c16724",
     "src/arc42_tqi/analyzer.py": "2c4fb5df29de9283b97d6e616cee96e77c4c21dec81224fdbee474609de0b978",
